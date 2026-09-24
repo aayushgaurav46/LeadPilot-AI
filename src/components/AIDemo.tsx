@@ -28,6 +28,7 @@ async function callGemini(history: HistoryItem[], message: string): Promise<stri
     body: JSON.stringify({ history, message }),
   })
   const data = await res.json()
+  if (data.error) throw new Error(data.error)
   return data.text as string
 }
 

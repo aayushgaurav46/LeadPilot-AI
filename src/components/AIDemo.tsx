@@ -3,22 +3,8 @@ import { AnimatePresence, motion } from 'framer-motion'
 import { Bot, Check, Loader2, RotateCcw, Send, Sparkles, User } from 'lucide-react'
 import { demoIncomingLead } from '../data/demoData'
 
-const SYSTEM_PROMPT = `You are LeadPilot AI, an expert real-estate lead qualification assistant.
-Your job is to qualify the incoming lead by naturally asking about:
-1. Their timeline to buy/move
-2. Budget and financing status (pre-approved, cash, or not yet)
-3. Specific property requirements (bedrooms, location preferences)
-4. Their motivation for moving
-
-Rules:
-- Be friendly, concise, and professional
-- Ask ONE question at a time
-- After 4-5 exchanges, provide a qualification summary in this exact JSON format wrapped in <RESULT> tags:
-<RESULT>{"score": <0-100>, "intent": "<High|Medium|Low>", "budgetStatus": "<Qualified|Unqualified|Unknown>", "timeline": "<string>", "recommendedAction": "<string>"}</RESULT>
-- Only output the <RESULT> tag when you have enough info to qualify the lead`
-
 type Message = { id: string; sender: 'lead' | 'ai'; text: string }
-type HistoryItem = { role: string; parts: { text: string }[] }
+type HistoryItem = { role: 'user' | 'assistant'; content: string }
 type QResult = { score: number; intent: string; budgetStatus: string; timeline: string; recommendedAction: string }
 
 async function callGemini(history: HistoryItem[], message: string): Promise<string> {
@@ -49,11 +35,11 @@ function AIDemo() {
   const startDemo = async () => {
     setStarted(true)
     setLoading(true)
-    const intro = `${SYSTEM_PROMPT}\n\nNew lead info: Name: ${demoIncomingLead.name}, Property: ${demoIncomingLead.property}, Location: ${demoIncomingLead.location}, Budget: ${demoIncomingLead.budget}, Timeline: ${demoIncomingLead.timeline}.\n\nGreet the lead and ask your first qualifying question.`
+    const intro = `New lead info: Name: ${demoIncomingLead.name}, Property: ${demoIncomingLead.property}, Location: ${demoIncomingLead.location}, Budget: ${demoIncomingLead.budget}, Timeline: ${demoIncomingLead.timeline}. Greet the lead and ask your first qualifying question.`
     const text = await callGemini([], intro)
     historyRef.current = [
-      { role: 'user', parts: [{ text: intro }] },
-      { role: 'model', parts: [{ text }] },
+      { role: 'user', content: intro },
+      { role: 'assistant', content: text },
     ]
     setMessages([{ id: 'm0', sender: 'ai', text }])
     setLoading(false)
@@ -70,8 +56,8 @@ function AIDemo() {
     const text = await callGemini(historyRef.current, userText)
     historyRef.current = [
       ...historyRef.current,
-      { role: 'user', parts: [{ text: userText }] },
-      { role: 'model', parts: [{ text }] },
+      { role: 'user', content: userText },
+      { role: 'assistant', content: text },
     ]
 
     const resultMatch = text.match(/<RESULT>([\s\S]*?)<\/RESULT>/)

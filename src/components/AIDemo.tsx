@@ -4,7 +4,7 @@ import { AnimatePresence, motion } from 'framer-motion'
 import { Bot, Check, Loader2, RotateCcw, Send, Sparkles, User } from 'lucide-react'
 import { demoIncomingLead } from '../data/demoData'
 
-const genAI = new GoogleGenerativeAI(import.meta.env.VITE_GEMINI_API_KEY ?? '')
+const genAI = new GoogleGenerativeAI((import.meta as any).env?.VITE_GEMINI_API_KEY ?? '')
 
 const SYSTEM_PROMPT = `You are LeadPilot AI, an expert real-estate lead qualification assistant.
 Your job is to qualify the incoming lead by naturally asking about:

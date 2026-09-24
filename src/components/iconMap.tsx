@@ -22,16 +22,18 @@ export type IconKey =
   | 'messageSquare'
   | 'barChart'
 
-const iconRegistry: Record<IconKey, ComponentType<{ size?: number; className?: string }>> = {
-  inbox: Inbox,
-  bot: Bot,
-  checklist: ListChecks,
-  target: Target,
-  repeat: Repeat,
-  calendar: Calendar,
-  database: Database,
-  messageSquare: MessageSquare,
-  barChart: BarChart3,
+type IconComponent = ComponentType<{ size?: number; className?: string }>
+
+const iconRegistry: Record<IconKey, IconComponent> = {
+  inbox: Inbox as IconComponent,
+  bot: Bot as IconComponent,
+  checklist: ListChecks as IconComponent,
+  target: Target as IconComponent,
+  repeat: Repeat as IconComponent,
+  calendar: Calendar as IconComponent,
+  database: Database as IconComponent,
+  messageSquare: MessageSquare as IconComponent,
+  barChart: BarChart3 as IconComponent,
 }
 
 export function getIcon(key: IconKey) {

@@ -1,10 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
-import { GoogleGenerativeAI } from '@google/generative-ai'
 import { AnimatePresence, motion } from 'framer-motion'
 import { Bot, Check, Loader2, RotateCcw, Send, Sparkles, User } from 'lucide-react'
 import { demoIncomingLead } from '../data/demoData'
-
-const genAI = new GoogleGenerativeAI(import.meta.env.VITE_GEMINI_API_KEY ?? '')
 
 const SYSTEM_PROMPT = `You are LeadPilot AI, an expert real-estate lead qualification assistant.
 Your job is to qualify the incoming lead by naturally asking about:
@@ -21,7 +18,18 @@ Rules:
 - Only output the <RESULT> tag when you have enough info to qualify the lead`
 
 type Message = { id: string; sender: 'lead' | 'ai'; text: string }
+type HistoryItem = { role: string; parts: { text: string }[] }
 type QResult = { score: number; intent: string; budgetStatus: string; timeline: string; recommendedAction: string }
+
+async function callGemini(history: HistoryItem[], message: string): Promise<string> {
+  const res = await fetch('/api/gemini', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ history, message }),
+  })
+  const data = await res.json()
+  return data.text as string
+}
 
 function AIDemo() {
   const [messages, setMessages] = useState<Message[]>([])
@@ -30,9 +38,7 @@ function AIDemo() {
   const [result, setResult] = useState<QResult | null>(null)
   const [booked, setBooked] = useState(false)
   const [started, setStarted] = useState(false)
-  const chatRef = useRef<ReturnType<typeof genAI.getGenerativeModel> | null>(null)
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const sessionRef = useRef<any>(null)
+  const historyRef = useRef<HistoryItem[]>([])
   const bottomRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
@@ -42,40 +48,38 @@ function AIDemo() {
   const startDemo = async () => {
     setStarted(true)
     setLoading(true)
-    const model = genAI.getGenerativeModel({ model: 'gemini-1.5-flash' })
-    chatRef.current = model
-    const chat = model.startChat({
-      history: [],
-      generationConfig: { maxOutputTokens: 300 },
-    })
-    sessionRef.current = chat
-
     const intro = `${SYSTEM_PROMPT}\n\nNew lead info: Name: ${demoIncomingLead.name}, Property: ${demoIncomingLead.property}, Location: ${demoIncomingLead.location}, Budget: ${demoIncomingLead.budget}, Timeline: ${demoIncomingLead.timeline}.\n\nGreet the lead and ask your first qualifying question.`
-
-    const res = await chat.sendMessage(intro)
-    const text = res.response.text()
+    const text = await callGemini([], intro)
+    historyRef.current = [
+      { role: 'user', parts: [{ text: intro }] },
+      { role: 'model', parts: [{ text }] },
+    ]
     setMessages([{ id: 'm0', sender: 'ai', text }])
     setLoading(false)
   }
 
   const sendMessage = async () => {
-    if (!input.trim() || !sessionRef.current || loading) return
-    const userMsg: Message = { id: `u${Date.now()}`, sender: 'lead', text: input.trim() }
+    if (!input.trim() || loading) return
+    const userText = input.trim()
+    const userMsg: Message = { id: `u${Date.now()}`, sender: 'lead', text: userText }
     setMessages((prev) => [...prev, userMsg])
     setInput('')
     setLoading(true)
 
-    const res = await sessionRef.current.sendMessage(input.trim())
-    const text = res.response.text()
+    const text = await callGemini(historyRef.current, userText)
+    historyRef.current = [
+      ...historyRef.current,
+      { role: 'user', parts: [{ text: userText }] },
+      { role: 'model', parts: [{ text }] },
+    ]
 
     const resultMatch = text.match(/<RESULT>([\s\S]*?)<\/RESULT>/)
     if (resultMatch) {
       try {
-        const parsed: QResult = JSON.parse(resultMatch[1])
-        setResult(parsed)
+        setResult(JSON.parse(resultMatch[1]) as QResult)
         const cleanText = text.replace(/<RESULT>[\s\S]*?<\/RESULT>/, '').trim()
         if (cleanText) setMessages((prev) => [...prev, { id: `a${Date.now()}`, sender: 'ai', text: cleanText }])
-      } catch {}
+      } catch { /* ignore parse errors */ }
     } else {
       setMessages((prev) => [...prev, { id: `a${Date.now()}`, sender: 'ai', text }])
     }
@@ -89,7 +93,7 @@ function AIDemo() {
     setResult(null)
     setBooked(false)
     setStarted(false)
-    sessionRef.current = null
+    historyRef.current = []
   }
 
   return (
@@ -128,19 +132,13 @@ function AIDemo() {
             </dl>
 
             {!started ? (
-              <button
-                type="button"
-                onClick={startDemo}
-                className="mt-7 flex w-full items-center justify-center gap-2 rounded-lg bg-ink px-4 py-3.5 text-[14.5px] font-semibold text-white transition-colors hover:bg-accent"
-              >
+              <button type="button" onClick={startDemo}
+                className="mt-7 flex w-full items-center justify-center gap-2 rounded-lg bg-ink px-4 py-3.5 text-[14.5px] font-semibold text-white transition-colors hover:bg-accent">
                 <Sparkles size={16} /> Start AI Qualification
               </button>
             ) : (
-              <button
-                type="button"
-                onClick={reset}
-                className="mt-7 flex w-full items-center justify-center gap-2 rounded-lg border border-line bg-white px-4 py-3 text-[14px] font-semibold text-ink transition-colors hover:bg-canvas"
-              >
+              <button type="button" onClick={reset}
+                className="mt-7 flex w-full items-center justify-center gap-2 rounded-lg border border-line bg-white px-4 py-3 text-[14px] font-semibold text-ink transition-colors hover:bg-canvas">
                 <RotateCcw size={15} /> Reset
               </button>
             )}
@@ -177,14 +175,10 @@ function AIDemo() {
               <div ref={bottomRef} />
             </div>
 
-            {/* Result */}
             <AnimatePresence>
               {result && (
-                <motion.div
-                  initial={{ opacity: 0, y: 8 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  className="mx-5 mb-4 rounded-xl border border-line-soft bg-white p-4 space-y-3"
-                >
+                <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }}
+                  className="mx-5 mb-4 rounded-xl border border-line-soft bg-white p-4 space-y-3">
                   <div className="flex items-center justify-between">
                     <p className="flex items-center gap-2 text-[14px] font-semibold text-signal-success">
                       <Check size={15} strokeWidth={3} /> Lead qualified
@@ -200,12 +194,8 @@ function AIDemo() {
                   </div>
                   <div className="flex items-center justify-between gap-3 rounded-lg border border-accent/25 bg-accent-soft px-4 py-3">
                     <p className="text-[13px] text-ink">{result.recommendedAction}</p>
-                    <button
-                      type="button"
-                      onClick={() => setBooked(true)}
-                      disabled={booked}
-                      className="shrink-0 rounded-lg bg-ink px-3 py-2 text-[13px] font-semibold text-white hover:bg-accent disabled:bg-signal-success transition-colors"
-                    >
+                    <button type="button" onClick={() => setBooked(true)} disabled={booked}
+                      className="shrink-0 rounded-lg bg-ink px-3 py-2 text-[13px] font-semibold text-white hover:bg-accent disabled:bg-signal-success transition-colors">
                       {booked ? <><Check size={13} className="inline mr-1" />Noted</> : 'Book'}
                     </button>
                   </div>
@@ -213,23 +203,14 @@ function AIDemo() {
               )}
             </AnimatePresence>
 
-            {/* Input */}
             {started && !result && (
               <div className="border-t border-line px-4 py-3 flex gap-2">
-                <input
-                  type="text"
-                  value={input}
-                  onChange={(e) => setInput(e.target.value)}
+                <input type="text" value={input} onChange={(e) => setInput(e.target.value)}
                   onKeyDown={(e) => e.key === 'Enter' && sendMessage()}
                   placeholder="Reply as the lead..."
-                  className="flex-1 rounded-lg border border-line bg-white px-3 py-2 text-[13.5px] text-ink outline-none focus:border-accent"
-                />
-                <button
-                  type="button"
-                  onClick={sendMessage}
-                  disabled={loading || !input.trim()}
-                  className="flex items-center justify-center rounded-lg bg-accent px-3 py-2 text-white disabled:opacity-50"
-                >
+                  className="flex-1 rounded-lg border border-line bg-white px-3 py-2 text-[13.5px] text-ink outline-none focus:border-accent" />
+                <button type="button" onClick={sendMessage} disabled={loading || !input.trim()}
+                  className="flex items-center justify-center rounded-lg bg-accent px-3 py-2 text-white disabled:opacity-50">
                   <Send size={15} />
                 </button>
               </div>

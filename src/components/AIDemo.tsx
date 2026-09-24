@@ -25,6 +25,7 @@ function AIDemo() {
   const [result, setResult] = useState<QResult | null>(null)
   const [booked, setBooked] = useState(false)
   const [started, setStarted] = useState(false)
+  const [error, setError] = useState<string | null>(null)
   const historyRef = useRef<HistoryItem[]>([])
   const bottomRef = useRef<HTMLDivElement>(null)
 
@@ -35,14 +36,20 @@ function AIDemo() {
   const startDemo = async () => {
     setStarted(true)
     setLoading(true)
-    const intro = `New lead info: Name: ${demoIncomingLead.name}, Property: ${demoIncomingLead.property}, Location: ${demoIncomingLead.location}, Budget: ${demoIncomingLead.budget}, Timeline: ${demoIncomingLead.timeline}. Greet the lead and ask your first qualifying question.`
-    const text = await callGemini([], intro)
-    historyRef.current = [
-      { role: 'user', content: intro },
-      { role: 'assistant', content: text },
-    ]
-    setMessages([{ id: 'm0', sender: 'ai', text }])
-    setLoading(false)
+    setError(null)
+    try {
+      const intro = `New lead info: Name: ${demoIncomingLead.name}, Property: ${demoIncomingLead.property}, Location: ${demoIncomingLead.location}, Budget: ${demoIncomingLead.budget}, Timeline: ${demoIncomingLead.timeline}. Greet the lead and ask your first qualifying question.`
+      const text = await callGemini([], intro)
+      historyRef.current = [
+        { role: 'user', content: intro },
+        { role: 'assistant', content: text },
+      ]
+      setMessages([{ id: 'm0', sender: 'ai', text }])
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Something went wrong')
+    } finally {
+      setLoading(false)
+    }
   }
 
   const sendMessage = async () => {
@@ -52,7 +59,9 @@ function AIDemo() {
     setMessages((prev) => [...prev, userMsg])
     setInput('')
     setLoading(true)
+    setError(null)
 
+    try {
     const text = await callGemini(historyRef.current, userText)
     historyRef.current = [
       ...historyRef.current,
@@ -70,7 +79,11 @@ function AIDemo() {
     } else {
       setMessages((prev) => [...prev, { id: `a${Date.now()}`, sender: 'ai', text }])
     }
-    setLoading(false)
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Something went wrong')
+    } finally {
+      setLoading(false)
+    }
   }
 
   const reset = () => {
@@ -80,6 +93,7 @@ function AIDemo() {
     setResult(null)
     setBooked(false)
     setStarted(false)
+    setError(null)
     historyRef.current = []
   }
 
@@ -158,6 +172,9 @@ function AIDemo() {
                     <Loader2 size={14} className="animate-spin text-white" />
                   </span>
                 </div>
+              )}
+              {error && (
+                <p className="text-[13px] text-red-500 px-1">{error}</p>
               )}
               <div ref={bottomRef} />
             </div>
